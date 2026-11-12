@@ -3,37 +3,43 @@ name: Build APK
 on:
   push:
     branches: [main, master]
-  pull_request:
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Giải nén zip (hoặc dùng mã nguồn trực tiếp)
+        run: |
+          mkdir -p /tmp/src
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -gt 0 ]; then
+            echo "Giải nén ${zips[0]}"
+            unzip -q -o "${zips[0]}" -d /tmp/src
+          else
+            cp -r . /tmp/src/
+          fi
+          SETTINGS=$(find /tmp/src -name settings.gradle.kts -not -path '*/.git/*' | head -1)
+          if [ -z "$SETTINGS" ]; then echo "Không tìm thấy settings.gradle.kts"; exit 1; fi
+          echo "ROOT=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: 17
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: 8.9
 
-      - name: Build debug + release APK
-        run: gradle assembleDebug assembleRelease --stacktrace
+      - name: Build debug APK
+        working-directory: ${{ env.ROOT }}
+        run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: AXManager-apk
-          path: app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          name: OTmanagement-debug-apk
+          path: ${{ env.ROOT }}/app/build/outputs/apk/debug/*.apk
